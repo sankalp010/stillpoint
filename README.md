@@ -20,6 +20,22 @@ A timed DSA practice platform built with a Next.js App Router client and a separ
 
 The web app runs at http://localhost:3000 and the API at http://localhost:4000. `npm run build` builds the Next.js app. The seed command is repeatable and does not overwrite existing problem documents.
 
+## Deploying to Vercel
+
+This repository contains two applications. Create two Vercel projects from the same GitHub repository, setting the project root directory to `api` for the Express API and `web` for the Next.js app. Vercel can deploy the Express application directly; each project gets its own deployment URL.
+
+Deploy the API with these environment variables:
+
+- `MONGODB_URI`: a reachable MongoDB connection string with network access enabled for Vercel.
+- `SESSION_SECRET`: a strong, unique random secret stored only in Vercel's environment settings.
+- `WEB_ORIGIN`: the exact production origin of the Next.js project, such as `https://stillpoint.vercel.app`.
+- `COOKIE_SECURE=true`
+- `GOOGLE_CLIENT_ID`, `JUDGE0_URL`, `JUDGE0_AUTH_TOKEN`, and `JUDGE0_LANGUAGE_ID` when those integrations are configured.
+
+For the Next.js project, set `NEXT_PUBLIC_API_ORIGIN=/api` and `API_BACKEND_ORIGIN` to the API deployment origin, without a trailing slash or `/api` suffix. Next.js then proxies `/api/*` to Express under the web origin so the HttpOnly session cookie remains first-party. Set `NEXT_PUBLIC_GOOGLE_CLIENT_ID` if Google sign-in is enabled. Keep secrets in Vercel's environment settings; never commit them or add them to `NEXT_PUBLIC_*` variables.
+
+The API requires MongoDB at runtime. Seed the question library after MongoDB is configured with `npm run seed` using the same `MONGODB_URI`. Judge0 is optional, but solution evaluation reports unavailable until it is configured.
+
 ## Checks
 
 - `npm test` runs the API domain tests.
