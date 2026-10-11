@@ -1,0 +1,34 @@
+'use client';
+
+import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { api } from '../../../lib/api';
+import SiteFooter from '../../../components/SiteFooter';
+import SiteHeader from '../../../components/SiteHeader';
+
+const prettyTime=seconds=>`${String(Math.floor(seconds/3600)).padStart(2,'0')}:${String(Math.floor(seconds%3600/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;
+export default function InterviewPage(){
+  const {id}=useParams(),router=useRouter();
+  const [session,setSession]=useState(null),[selected,setSelected]=useState(0),[drafts,setDrafts]=useState({}),[busy,setBusy]=useState(false),[finishing,setFinishing]=useState(false),[error,setError]=useState(''),[now,setNow]=useState(0);
+  const expiryRequested=useRef(false);
+  const refresh=useCallback(async()=>{try{const data=await api(`/sessions/${id}`);setSession(data.session);if(data.session.status!=='active')router.replace(`/review/${id}`)}catch(e){if(e.message.includes('sign in'))router.replace('/login');else setError(e.message)}},[id,router]);
+  useEffect(()=>{refresh()},[refresh]);
+  useEffect(()=>{setNow(Date.now());const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer)},[]);
+  useEffect(()=>{if(session?.status==='active'&&new Date(session.deadlineAt).getTime()<=now&&!expiryRequested.current){expiryRequested.current=true;refresh()}},[now,session,refresh]);
+  useEffect(()=>{if(session?.problems?.some(problem=>problem.submission.status==='running')){const poll=setInterval(refresh,2500);return()=>clearInterval(poll)}},[session,refresh]);
+  const current=session?.problems?.[selected];
+  const source=current?(drafts[current.id]??(current.submission.sourceCode||current.starterCode)):'';
+  const secondsLeft=session?(now?Math.max(0,Math.floor((new Date(session.deadlineAt).getTime()-now)/1000)):session.durationMinutes*60):0;
+  useEffect(()=>{if(!session)return;const stored={};for(const problem of session.problems){const draft=localStorage.getItem(`stillpoint:${id}:${problem.id}`);if(draft!==null)stored[problem.id]=draft}setDrafts(value=>({...stored,...value}))},[session,id]);
+  const setSource=value=>{if(!current)return;setDrafts(d=>({...d,[current.id]:value}));localStorage.setItem(`stillpoint:${id}:${current.id}`,value)};
+  async function submit(){if(!current)return;setBusy(true);setError('');try{const result=await api(`/sessions/${id}/problems/${current.id}/submissions`,{method:'POST',body:JSON.stringify({sourceCode:source})});const updated={...session};updated.problems=updated.problems.map(p=>p.id===current.id?{...p,submission:{...p.submission,...result.submission,sourceCode:source}}:p);setSession(updated)}catch(e){setError(e.message);await refresh()}finally{setBusy(false)}}
+  async function finish(){if(!window.confirm('Finish this interview and reveal your review? You will not be able to submit again.'))return;setFinishing(true);setError('');try{await api(`/sessions/${id}/finish`,{method:'POST'});router.replace(`/review/${id}`)}catch(e){setError(e.message);setFinishing(false)}}
+  if(!session)return <main className="shell"><SiteHeader /><div className="workspace-skeleton">{error||'Loading your interview…'}</div></main>;
+  const status=current?.submission?.status;
+  return <main className="workspace"><SiteHeader variant="workspace" leading={<><span className="separator"/><Link href="/dashboard" className="backlink">Exit interview</Link></>}><span className={`timer ${secondsLeft<300?'urgent':''}`}><i className="timer-dot"/>{prettyTime(secondsLeft)}</span><button className="button" onClick={finish} disabled={finishing}>{finishing?'Finishing…':'Finish interview'}</button></SiteHeader>
+    <div className="work-layout"><aside className="problem-nav"><div className="nav-title">Your round</div>{session.problems.map((p,i)=><button key={p.id} className={`problem-tab ${i===selected?'current':''}`} onClick={()=>setSelected(i)}><span className="problem-number">0{i+1}</span><span><strong>{p.title}</strong><small>{p.difficulty} · {p.submission.status==='accepted'?'passed':p.submission.status==='running'?'checking':p.submission.status.replace('_',' ')}</small></span></button>)}</aside>
+      {current&&<><section className="problem-pane"><div className="eyebrow">{current.topics.join(' · ')}</div><h1>{current.title}</h1><span className={`pill ${current.difficulty==='easy'?'accent':current.difficulty==='hard'?'warning':''}`}>{current.difficulty}</span><div className="problem-body" style={{marginTop:17}}>{current.prompt}</div><h3>Constraints</h3><ul className="constraint">{current.constraints.map((c,i)=><li key={i}>{c}</li>)}</ul><h3>Example</h3>{current.examples.map((ex,i)=><div className="example" key={i}><div>Input: {ex.input}</div><div>Output: {ex.output}</div></div>)}<h3>Notes</h3><div className="problem-body">Write a function named <code>solve</code> that accepts the described arguments and returns the requested value. Your solution is checked against private tests.</div></section>
+      <section className="editor-pane"><div className="editor-head"><strong>Your solution</strong><span>JavaScript · Node.js</span></div><textarea className="editor" aria-label="JavaScript solution editor" spellCheck="false" value={source} onChange={e=>setSource(e.target.value)} onKeyDown={e=>{if(e.key==='Tab'){e.preventDefault();const el=e.currentTarget,start=el.selectionStart,end=el.selectionEnd,value=el.value;setSource(value.substring(0,start)+'  '+value.substring(end));requestAnimationFrame(()=>{el.selectionStart=el.selectionEnd=start+2})}}}/><div className="editor-foot"><span>{status==='accepted'?'All hidden tests passed':status==='incorrect'?`${current.submission.passedTests} of ${current.submission.totalTests} tests passed`:status==='error'?'Evaluation needs attention':'Draft saved on this device'}</span><div className="editor-actions"><button className="button secondary" onClick={()=>{if(window.confirm('Reset this editor to the starter code? Your current draft will be replaced.'))setSource(current.starterCode)}}>Reset</button><button className="button" onClick={submit} disabled={busy||secondsLeft===0}>{busy?'Checking…':'Submit solution'} <span>↗</span></button></div></div>{error&&<div className="error-box" role="alert">{error}</div>}{status&&status!=='not_submitted'&&<div className={`submission-result ${status==='accepted'?'accepted':status==='error'?'error':''}`} aria-live="polite"><strong>{status==='accepted'?'Accepted':status==='incorrect'?'Not quite':status==='running'?'Evaluation in progress':'Evaluation unavailable'}</strong>{current.submission.passedTests} of {current.submission.totalTests} hidden tests passed.{current.submission.message?` ${current.submission.message}`:''}</div>}</section></>}
+    </div><SiteFooter compact /></main>;
+}

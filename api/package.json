@@ -1,0 +1,23 @@
+{
+  "name": "mock-interview-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "seed": "node src/seed.js",
+    "lint": "node --check src/index.js && node --check src/routes.js && node --check src/domain.js && node --check src/judge0.js",
+    "test": "node --test test/*.test.js",
+    "smoke": "node test/smoke.mjs"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "connect-mongo": "^5.1.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "google-auth-library": "^9.15.1",
+    "mongoose": "^8.9.5"
+  }
+}
